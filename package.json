@@ -1,0 +1,26 @@
+{
+  "name": "mpbatchimport-cloudfunction-node",
+  "version": "1.0.0",
+  "description": "a cloud function to import events in mixpanel for node",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ak--47/mpBatchImport-CloudFunction-node.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ak--47/mpBatchImport-CloudFunction-node/issues"
+  },
+  "homepage": "https://github.com/ak--47/mpBatchImport-CloudFunction-node#readme",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "is-gzip": "^2.0.0",
+    "md5": "^2.3.0",
+    "node-fetch": "^2.6.1",
+    "node-gzip": "^1.1.2"
+  }
+}
