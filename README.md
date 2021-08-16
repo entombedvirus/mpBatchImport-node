@@ -99,7 +99,7 @@ There are two ways to pass data into the script; choose which best suits your ne
 [Line 36](https://github.com/ak--47/mpBatchImport-node/blob/main/index.js#L36) specifies the path to the source data:
 
 ```
-let  pathToDataFile  =  `./someTestData.ndjson`
+let  pathToDataFile  =  `./someTestData.json`
 ```
 
 change this to a valid path that points to the data you wish to import
