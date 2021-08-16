@@ -2,257 +2,169 @@
 
 ## wat.
 
-This repository contains a simple template for building [Pandoc](http://pandoc.org/) documents; Pandoc is a suite of tools to compile markdown files into readable files (PDF, EPUB, HTML...).
+This is a one-off script that implement's [Mixpanel's `/import` API](https://developer.mixpanel.com/reference/events#import-events) in node.js. It uses [service accounts](https://developer.mixpanel.com/reference/authentication#service-accounts) for authentication, and can batch import millions of events, quickly.
+
+This script is meant to be run **locally**; for a **cloud-based** data import, [see our in-depth guide](https://developer.mixpanel.com/docs/cloud-ingestion).
 
 ## tldr;
 ```
+git clone https://github.com/ak--47/mpBatchImport-node.git
+
+cd mpBatchImport-node/
+
 npm install
-npm run import ./pathToJSON
+
+echo 'PROJECTID=<your-project-id>
+USERNAME=<your-service-account-user>
+PASSWORD=<your-service-secret-secret>
+' > .env
+
+npm run import ./path-To-JSON-Data
 ```
 
-## Setup
+or if you want to generate some test data first:
+
+```
+npm run generate
+
+npm run import
+```
+
+## Detailed Instructions
 
 ### Install Dependencies
 
+This script uses `npm` to manage dependencies, similar to a web application. 
+
+After cloning the repo, `cd` into the `/mpBatchImport-node` and run:
+
+```
+npm install
+```
+
+this only needs to be done once.
+
 ### Authentication
 
-Auth
+Authentication for `/import` is handled by  [service accounts](https://developer.mixpanel.com/reference/authentication#service-accounts). You'll need to create a service account in your Mixpanel project and provide this script with your credentials (`project_id` , `username`, `secret`)
 
-#### Edit the Script
-In order to use this makefile you will need to make sure that the following dependencies are installed on your system:
-  - GNU make
-  - Pandoc
-  - LuaLaTeX
-  - DejaVu Sans fonts
+There are two ways to do that; you can choose whichever best suits your needs:
+
+#### Add Credentials to the Script
+You can supply your credentials directly in the script by editing [lines 19-26](https://github.com/ak--47/mpBatchImport-node/blob/main/index.js#L19-L26):
+
+```
+const  creds  = {
+project_id: 'myProjectId'
+username: 'myServiceAccount',
+password: 'myServiceSecret'  
+}
+```
+
 
 #### Use an .env file
 
-### Passing In Data
-
-You can pass
-
-###
+Alternatively, you can provide credentials to this script via a `.env` file of the form:
 
 ```
-my-document/     # Root directory.
-|- build/        # Folder used to store builded (output) files.
-|- src/          # Markdowns files; one for each chapter.
-|- images/       # Images folder.
-|- metadata.yml  # Metadata content (title, author...).
-|- Makefile      # Makefile used for building our documents.
+PROJECTID=myProjectId
+USERNAME=myServiceAccount
+PASSWORD=myServiceSecret
+```
+the `.env` file should be in the root directory of the script.
+
+### Passing In Data
+
+You can pass in data files of any size, as long as they are valid [JSON](https://jsonlint.com/) or [NDJSON](http://ndjson.org/). If the data is compressed (`gzip`), the script will automatically decompress it.
+
+The data should have the general form of Mixpanel's [event specification](https://developer.mixpanel.com/reference/events#track-event):
+
+```
+{
+	"event": "eventName" //required: event name
+	"properties": {
+		"distinct_id": 1337, //required: user id
+		"time": 1629120141 //required: unix epoc (sec or ms)
+		"foo": "bar" //optional: any other props
+ }
+}
+```
+
+For data imports, `token` is not required in `properties`; this script generates `$insert_id` using `md5` hashing. You can add additional data transformations on [line 120](https://github.com/ak--47/mpBatchImport-node/blob/main/index.js#L120-L122).
+
+There are two ways to pass data into the script; choose which best suits your needs:
+
+#### Reference the absolute path
+
+[Line 36](https://github.com/ak--47/mpBatchImport-node/blob/main/index.js#L36) specifies the path to the source data:
+
+```
+let  pathToDataFile  =  `./someTestData.ndjson`
+```
+
+change this to a valid path that points to the data you wish to import
+
+#### Use command line arguments
+
+The script also accepts a single command line argument to reference the data you wish to import:
+
+```
+npm run import ./path-to-data.json
 ```
 
 ### Generating Test Data
 
-Edit the *metadata.yml* file to set configuration data:
+If you do not have data to import, but want to test/evaluate Mixpanel's `/import` API, this script will generate data for you.
 
-```yml
----
-title: My document title
-author: Ralph Huwiler
-rights:  Creative Commons Attribution 4.0 International
-language: en-US
-tags: [document, my-document, etc]
-abstract: |
-  Your summary text.
----
+Simply run:
+```
+npm run generate
 ```
 
-You can find the list of all available keys on [this page](http://pandoc.org/MANUAL.html#extension-yaml_metadata_block).
+and you will see a file `./someTestData.ndjson` is created in the top level of the project directory.
 
-### Generating Data
-
-Creating a new chapter is as simple as creating a new markdown file in the *src/* folder; you'll end up with something like this:
+Optionally, you may add a command line argument to specify the number of test events to create (defaults to `10,000`):
 
 ```
-src/01-introduction.md
-src/02-installation.md
-src/03-usage.md
-src/04-references.md
+npm run generate 20000
 ```
 
-Pandoc and Make will join them automatically ordered by name; that's why the numeric prefixes are being used.
+### Sending Data to Mixpanel
 
-All you need to specify for each chapter at least one title:
+Once you have specified:
 
-```md
-# Introduction
+ - Your credentials (in the script OR using `.env`)
+ - Path to your data filed (in the script OR using command line arguments)
 
-This is the first paragraph of the introduction chapter.
+You are ready to run an import:
 
-## First
-
-This is the first subsection.
-
-## Second
-
-This is the second subsection.
+```
+npm run import
 ```
 
-Each title (*#*) will represent a chapter, while each subtitle (*##*) will represent a chapter's section. You can use as many levels of sections as markdown supports.
+The script will output messages to keep you informed of it's progress:
 
-#### Links between chapters
+```
+starting up...
 
-Anchor links can be used to link chapters within the document:
+using .env supplied credentials:
 
-```md
-// src/01-introduction.md
-# Introduction
+            project id: 2507188
+            user: nodeIsTheThing.bd59fa.mp-service-account
+        
+parsed 10,000 events from ./someTestData.ndjson
 
-For more information, check the [Usage] chapter.
+sending 10,000 events in 5 batches
 
-// src/02-installation.md
-# Usage
+{ code: 200, num_records_imported: 2000, status: 'OK' }
+{ code: 200, num_records_imported: 2000, status: 'OK' }
+{ code: 200, num_records_imported: 2000, status: 'OK' }
+{ code: 200, num_records_imported: 2000, status: 'OK' }
+{ code: 200, num_records_imported: 2000, status: 'OK' }
 
-...
+successfully imported 10,000 events
+finshed.
 ```
 
-If you want to rename the reference, use this syntax:
+For more on the `/import` API's various responses, [see the relevant documentation](https://developer.mixpanel.com/reference/events#import-events).
 
-```md
-For more information, check [this](#usage) chapter.
-```
-
-Anchor names should be downcased, and spaces, colons, semicolons... should be replaced with hyphens. Instead of `Chapter title: A new era`, you have: `#chapter-title-a-new-era`.
-
-#### Links between sections
-
-It's the same as anchor links:
-
-```md
-# Introduction
-
-## First
-
-For more information, check the [Second] section.
-
-## Second
-
-...
-```
-
-Or, with al alternative name:
-
-```md
-For more information, check [this](#second) section.
-```
-
-### Inserting objects
-
-Text. That's cool. What about images and tables?
-
-#### Insert an image
-
-Use Markdown syntax to insert an image with a caption:
-
-```md
-![A cool seagull.](images/seagull.png)
-```
-
-Pandoc will automatically convert the image into a figure (image + caption).
-
-If you want to resize the image, you may use this syntax, available in Pandoc 1.16:
-
-```md
-![A cool seagull.](images/seagull.png){ width=50% height=50% }
-```
-
-Also, to reference an image, use LaTeX labels:
-
-```md
-Please, admire the gloriousnes of Figure \ref{seagull_image}.
-
-![A cool seagull.\label{seagull_image}](images/seagull.png)
-```
-
-#### Insert a table
-
-Use markdown table, and use the `Table: <Your table description>` syntax to add a caption:
-
-```md
-| Index | Name |
-| ----- | ---- |
-| 0     | AAA  |
-| 1     | BBB  |
-| ...   | ...  |
-
-Table: This is an example table.
-```
-
-If you want to reference a table, use LaTeX labels:
-
-```md
-Please, check Table /ref{example_table}.
-
-| Index | Name |
-| ----- | ---- |
-| 0     | AAA  |
-| 1     | BBB  |
-| ...   | ...  |
-
-Table: This is an example table.\label{example_table}
-```
-
-#### Insert an equation
-
-Wrap a LaTeX math equation between `$` delimiters for inline (tiny) formulas:
-
-```md
-This, $\mu = \sum_{i=0}^{N} \frac{x_i}{N}$, the mean equation, ...
-```
-
-Pandoc will transform them automatically into images using online services.
-
-If you want to center the equation instead of inlining it, use double `$$` delimiters:
-
-```md
-$$\mu = \sum_{i=0}^{N} \frac{x_i}{N}$$
-```
-
-[Here](https://www.codecogs.com/latex/eqneditor.php)'s an online equation editor.
-
-### Output
-
-This template uses *Makefile* to automatize the building process. Instead of using the *pandoc cli util*, we're going to use some *make* commands.
-
-#### Export to PDF
-
-Use this command:
-
-```sh
-make pdf
-```
-
-The generated file will be placed in *build/pdf*.
-
-Please, note that PDF file generation requires some extra dependencies (~ 800 MB):
-
-```sh
-sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-latex-extra 
-```
-
-#### Export to EPUB
-
-Use this command:
-
-```sh
-make epub
-```
-
-The generated file will be placed in *build/epub*.
-
-#### Export to HTML
-
-Use this command:
-
-```sh
-make html
-```
-
-The generated file(s) will be placed in *build/html*.
-
-## References
-
-- [Pandoc](http://pandoc.org/)
-- [Pandoc Manual](http://pandoc.org/MANUAL.html)
-- [Wikipedia: Markdown](http://wikipedia.org/wiki/Markdown)

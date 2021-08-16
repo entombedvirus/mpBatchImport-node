@@ -69,7 +69,7 @@ async function main(credentials = {}, dataFile) {
     //LOAD
     let file = await readFilePromisified(dataFile).catch((e)=>{
         console.error(`failed to load ${dataFile}... does it exist?\n`);
-        console.log(`if you require some test data, try 'npm run generate' first...`)
+        console.log(`if you require some test data, try 'npm run generate' first...`);
         process.exit(1);
     });
 
