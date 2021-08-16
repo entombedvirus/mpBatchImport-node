@@ -33,7 +33,7 @@ PASSWORD=<yourSecret>
 */
 
 //SOURCE DATA
-let pathToDataFile = `./someTestData.ndjson` //note: the path to a data file can also be passed in as a command line argument
+let pathToDataFile = `./someTestData.json` //note: the path to a data file can also be passed in as a command line argument
 
 //CONFIG + LIMITS
 const ENDPOINT_URL = `https://api.mixpanel.com/import`

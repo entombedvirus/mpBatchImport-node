@@ -7,3 +7,5 @@ scratchpad.js
 .DS_Store
 .env
 node_modules/
+archived/
+someTestData.json
