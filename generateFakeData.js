@@ -51,7 +51,7 @@ function main() {
         showProgress('events', index)       
     }
 
-    console.log(`\nsaving ${numberWithCommas(numOfEvents)} events to ./someTestData.json\n`);
+    console.log(`\n\nsaving ${numberWithCommas(numOfEvents)} events to ./someTestData.json\n`);
 
     fs.writeFile("./someTestData.json", JSON.stringify(arrOfEvents), function(err) {
         if(err) {
