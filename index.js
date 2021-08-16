@@ -1,32 +1,28 @@
 // USING mixpanel's /import to... import some events to mixpanel ;)
 // https://developer.mixpanel.com/reference/events#import-events
-// by AK ... ak@mixpanel.com
+// by ak@mixpanel.com
 
 //DEPENDENCIES
-const fs = require('fs');
-const util = require('util');
+/* beautify ignore:start */
+const { readFile } = require('fs');
+const { promisify } = require('util');
+const readFilePromisified = promisify(readFile); 
 require('dotenv').config(); //https://www.npmjs.com/package/dotenv
 const fetch = require('node-fetch'); //https://www.npmjs.com/package/node-fetch
 const md5 = require('md5'); //https://www.npmjs.com/package/md5
 const isGzip = require('is-gzip'); //https://www.npmjs.com/package/is-gzip
-const {
-    gzip,
-    ungzip
-} = require('node-gzip'); //https://www.npmjs.com/package/node-gzip
-
-//promisfy readFile()
-//https://stackoverflow.com/a/46867579/4808195
-const readFile = util.promisify(fs.readFile);
+const { gzip, ungzip } = require('node-gzip'); //https://www.npmjs.com/package/node-gzip
+/* beautify ignore:end */
 
 
 //CREDENTIALS
 const creds = {
+    //project to import data into
     project_id: '', //https://help.mixpanel.com/hc/en-us/articles/115004490503-Project-Settings#project-id
 
-    //service account credentials
-    //https://developer.mixpanel.com/reference/authentication#service-account
+    //service account credentials    
     username: '',
-    password: ''
+    password: '' //https://developer.mixpanel.com/reference/authentication#service-account
 }
 
 //note: credentials can also be stored in .env file, like:
@@ -36,24 +32,26 @@ USERNAME=<yourServiceAccount>
 PASSWORD=<yourSecret>
 */
 
-//DATA FILE
-const pathToDataFile = `./someTestData.ndjson`
+//SOURCE DATA
+let pathToDataFile = `./someTestData.ndjson` //note: the path to a data file can also be passed in as a command line argument
 
-
+//CONFIG + LIMITS
 const ENDPOINT_URL = `https://api.mixpanel.com/import`
-
-//limits
 const EVENTS_PER_BATCH = 2000
 const BYTES_PER_BATCH = 2 * 1024 * 1024
+const lastArgument = [...process.argv].pop()
+if (lastArgument.includes('json')) {
+    pathToDataFile = lastArgument;
+}
 
 
 async function main(credentials = {}, dataFile) {
     console.log('starting up...\n');
 
-    //CREDS
+    //AUTH
     //prefer .env credentials, if they exist
     if (process.env.PROJECTID && process.env.USERNAME && process.env.PASSWORD) {
-        console.log(`using .env supplied credentials:
+        console.log(`using .env supplied credentials:\n
             project id: ${process.env.PROJECTID}
             user: ${process.env.USERNAME}
         `);
@@ -62,24 +60,28 @@ async function main(credentials = {}, dataFile) {
         credentials.username = process.env.USERNAME
         credentials.password = process.env.PASSWORD
     } else {
-        console.log(`using hardcoded credentials:
+        console.log(`using hardcoded credentials:\n
         project id: ${credentials.project_id}
         user: ${credentials.username}
         `)
     }
 
     //LOAD
-    let file = await readFile(dataFile);
+    let file = await readFilePromisified(dataFile).catch((e)=>{
+        console.error(`failed to load ${dataFile}... does it exist?\n`);
+        console.log(`if you require some test data, try 'npm run generate' first...`)
+        process.exit(1);
+    });
+
 
     //DECOMPRESS
     let decompressed;
     if (isGzip(file)) {
-        console.log('unzipping file')
+        console.log('unzipping file\n')
         decompressed = await (await ungzip(file)).toString();
     } else {
         decompressed = file.toString();
     }
-
 
     //UNIFY
     //if it's already JSON, just use that
@@ -97,18 +99,18 @@ async function main(credentials = {}, dataFile) {
         }
     }
 
-    console.log(`parsed ${numberWithCommas(allData.length)} events\n`);
+    console.log(`parsed ${numberWithCommas(allData.length)} events from ${pathToDataFile}\n`);
 
     //TRANSFORM
     for (singleEvent of allData) {
 
-        //ensure every event has an $insert_id
+        //ensure each event has an $insert_id prop
         if (!singleEvent.properties.$insert_id) {
             let hash = md5(singleEvent);
             singleEvent.properties.$insert_id = hash;
         }
 
-        //ensure every event doesn't have a token
+        //ensure each event doesn't have a token prop
         if (singleEvent.properties.token) {
             delete singleEvent.properties.token
         }
@@ -116,25 +118,24 @@ async function main(credentials = {}, dataFile) {
         //etc...
 
         //other checks and transforms go here
-        //consider checking for the existince of event name, distinct_id, and time
+        //consider checking for the existince of event name, distinct_id, and time, and max 255 props
         //as per: https://developer.mixpanel.com/reference/events#validation
     }
 
 
-
     //CHUNK
 
-    //chunk for # of events; max 2000
+    //max 2000 events per batch
     const batches = chunkForNumOfEvents(allData, EVENTS_PER_BATCH);
 
+    //max 2MB size per batch
+    const batchesSized = chunkForSize(batches, BYTES_PER_BATCH);
 
-    //chunk for size of each batch; max 2MB
-    //todo
 
     //COMPRESS
-    const compressed = await compressChunks(batches)
+    const compressed = await compressChunks(batchesSized)
 
-    
+
     //FLUSH
     console.log(`sending ${numberWithCommas(allData.length)} events in ${numberWithCommas(batches.length)} batches\n`);
     let numRecordsImported = 0;
@@ -144,11 +145,13 @@ async function main(credentials = {}, dataFile) {
         numRecordsImported += result.num_records_imported || 0;
     }
 
+    //FINISH
     console.log(`\nsuccessfully imported ${numberWithCommas(numRecordsImported)} events`);
-    console.log('finshed.')
+    console.log('finshed.');
+    process.exit(0);
 }
 
-//helpers
+//HELPERS
 function chunkForNumOfEvents(arrayOfEvents, chunkSize) {
     return arrayOfEvents.reduce((resultArray, item, index) => {
         const chunkIndex = Math.floor(index / chunkSize)
@@ -158,6 +161,27 @@ function chunkForNumOfEvents(arrayOfEvents, chunkSize) {
         }
 
         resultArray[chunkIndex].push(item)
+
+        return resultArray
+    }, [])
+}
+
+function chunkForSize(arrayOfBatches, maxBytes) {
+    return arrayOfBatches.reduce((resultArray, item, index) => {
+        //assume each character is a byte
+        const currentLengthInBytes = JSON.stringify(item).length
+
+        if (currentLengthInBytes >= maxBytes) {
+            //if the batch is too big; cut it in half
+            //todo: make this is a little smarter
+            let midPointIndex = Math.ceil(item.length / 2);
+            let firstHalf = item.slice(0, midPointIndex);
+            let secondHalf = item.slice(-midPointIndex);
+            resultArray.push(firstHalf);
+            resultArray.push(secondHalf);
+        } else {
+            resultArray.push(item)
+        }
 
         return resultArray
     }, [])

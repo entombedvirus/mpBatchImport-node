@@ -4,6 +4,8 @@
   "description": "a cloud function to import events in mixpanel for node",
   "main": "index.js",
   "scripts": {
+    "import": "node index.js",
+    "generate": "node generateFakeData.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

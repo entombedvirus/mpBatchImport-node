@@ -2,6 +2,8 @@
 *.py
 *.ndjson
 *.gz
+scratchpad.js
+.vscode/*
 
 # Logs
 logs
