@@ -67,7 +67,7 @@ async function main(credentials = {}, dataFile) {
     }
 
     //LOAD
-    let file = await readFilePromisified(dataFile).catch((e)=>{
+    let file = await readFilePromisified(dataFile).catch((e) => {
         console.error(`failed to load ${dataFile}... does it exist?\n`);
         console.log(`if you require some test data, try 'npm run generate' first...`);
         process.exit(1);
@@ -188,7 +188,7 @@ function chunkForSize(arrayOfBatches, maxBytes) {
 }
 
 async function compressChunks(arrayOfBatches) {
-    const allBatches = arrayOfBatches.map(async function (batch) {
+    const allBatches = arrayOfBatches.map(async function(batch) {
         return await gzip(JSON.stringify(batch))
     });
     return Promise.all(allBatches);
@@ -223,4 +223,11 @@ function numberWithCommas(x) {
 }
 
 //that's all folks!
-main(creds, pathToDataFile);
+if (require.main === module) {
+    main(creds, pathToDataFile);
+} else {
+    console.log('required as a module');
+}
+
+
+module.exports = main
