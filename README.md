@@ -20,11 +20,11 @@ This script is meant to be run **locally**; for a **cloud-based** data import, [
 install as a module:
 
 ```
-npm install mpBatchImport --save
+npm install mp-batch-import --save
 ```
 then use in your code:
 ```
-const mpImport = require('mpBatchImport');
+const mpImport = require('mp-batch-import');
 const credentials = {
 	project_id: `{{mp project id}}`,
 	username: `{{service account user}}`
@@ -349,4 +349,4 @@ finshed.
 
   
 
-For more on the `/import` API's various responses, [see the relevant documentation](https://developer.mixpanel.com/reference/events#import-events).
+For more on the `/import` API's various responses, [see the relevant documentation](https://developer.mixpanel.com/reference/events#import-events).npm

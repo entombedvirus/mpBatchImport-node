@@ -1,5 +1,5 @@
 {
-  "name": "mpBatchImport",
+  "name": "mp-batch-import",
   "version": "1.0.0",
   "description": "a library to import events in mixpanel for node",
   "main": "index.js",
