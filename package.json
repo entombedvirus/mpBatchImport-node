@@ -1,7 +1,7 @@
 {
-  "name": "mpbatchimport-cloudfunction-node",
+  "name": "mpBatchImport",
   "version": "1.0.0",
-  "description": "a cloud function to import events in mixpanel for node",
+  "description": "a library to import events in mixpanel for node",
   "main": "index.js",
   "scripts": {
     "import": "node index.js",
