@@ -151,6 +151,8 @@ async function main(credentials = {}, dataFile) {
     process.exit(0);
 }
 
+//special change
+
 //HELPERS
 function chunkForNumOfEvents(arrayOfEvents, chunkSize) {
     return arrayOfEvents.reduce((resultArray, item, index) => {
