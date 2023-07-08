@@ -28,21 +28,29 @@ function main() {
 
   //mixin for generating random events
   chance.mixin({
-    'event': function () {
+    'event': function(profiles) {
       const did = chance.pickone(users)
-      const profile = addPrefix(config.profile_prop_prefix, chance.user_profile(did))
+      const time = chance.integer({
+        min: now - dayInMs * 90, //90 days in the past
+        max: now,
+      })
+      let did_profiles = profiles[did] || []
+      if (did_profiles.length == 0) {
+        profiles[did] = did_profiles
+      }
+      if (did_profiles.length == 0 || chance.integer({ min: 1, max: 100 }) <= config.profile_regen_change_percent) {
+        did_profiles.push({ time: time, profile: chance.user_profile() })
+      }
+      const profile = addPrefix(config.profile_prop_prefix, did_profiles.slice(-1)[0].profile)
 
       return {
         event: chance.pickone(eventNames),
         properties: {
           distinct_id: did,
-          time: chance.integer({
-            min: now - dayInMs * 90, //90 days in the past
-            max: now
-          }),
+          time: time,
           $source: "roh import",
           version: 2,
-          luckyNumber: chance.prime({min: 1, max: 10000}),
+          luckyNumber: chance.prime({ min: 1, max: 10000 }),
           ip: chance.ip(),
           email: chance.email(),
           ...profile
@@ -52,8 +60,8 @@ function main() {
     'user_profile': function() {
       return {
         "Driver Tier": chance.pickone(['silver', 'gold', 'diamond', 'platinum']),
-        "Driver Battery": chance.integer({min: 0, max: 100}),
-        "Driver Ratings": chance.floating({min: 1.0, max: 5.0, fixed: 1}),
+        "Driver Battery": chance.integer({ min: 0, max: 100 }),
+        "Driver Ratings": chance.floating({ min: 1.0, max: 5.0, fixed: 1 }),
         "Driver Preference": chance.pickone(['Food', 'People']),
         "City": chance.city(),
 
@@ -63,15 +71,21 @@ function main() {
 
   console.log(`generating ${numberWithCommas(numOfEvents)} events...\n`);
 
-  for (let index = 1; index < numOfEvents+1; index++) {
-    arrOfEvents.push(chance.event());
+  let profiles = {}
+  for (let index = 1; index < numOfEvents + 1; index++) {
+    arrOfEvents.push(chance.event(profiles));
     showProgress('events', index)
   }
 
+  console.log(`\ngenerated ${numberWithCommas(Object.keys(profiles).length)} profiles...\n`);
   console.log(`\n\nsaving ${numberWithCommas(numOfEvents)} events to ./someTestData.json\n`);
 
-  fs.writeFile("./someTestData.json", JSON.stringify(arrOfEvents), function(err) {
-    if(err) {
+  const contents = {
+    profiles: profiles,
+    events: arrOfEvents,
+  }
+  fs.writeFile("./someTestData.json", JSON.stringify(contents), function(err) {
+    if (err) {
       return console.log(err);
       process.exit(1)
     }
