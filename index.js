@@ -17,29 +17,22 @@ const { gzip, ungzip } = require('node-gzip'); //https://www.npmjs.com/package/n
 
 //CREDENTIALS
 const creds = {
-  //project to import data into
-  project_id: '', //https://help.mixpanel.com/hc/en-us/articles/115004490503-Project-Settings#project-id
-
-  //service account credentials
-  username: '',
-  password: '', //https://developer.mixpanel.com/reference/authentication#service-account
-
   token: '',
 }
 
 //note: credentials can also be stored in .env file, like:
 /*
-PROJECTID=<yourProjectId>
-USERNAME=<yourServiceAccount>
-PASSWORD=<yourSecret>
+TOKEN=<yourProjectToken>
 */
 
 //SOURCE DATA
 let pathToDataFile = `./someTestData.json` //note: the path to a data file can also be passed in as a command line argument
 
 //CONFIG + LIMITS
-const ENDPOINT_URL = `https://api.mixpanel.com/import`
+const IMPORT_ENDPOINT_URL = `https://api.mixpanel.com/import`
+const ENGAGE_ENDPOINT_URL = `https://api.mixpanel.com/engage?verbose=2`
 const EVENTS_PER_BATCH = 2000
+const PROFILE_UPDATES_PER_BATCH = 2000
 const BYTES_PER_BATCH = 2 * 1024 * 1024
 const lastArgument = [...process.argv].pop()
 if (lastArgument.includes('json')) {
@@ -52,25 +45,19 @@ async function main(credentials = {}, dataFile) {
 
   //AUTH
   //prefer .env credentials, if they exist
-  if (process.env.PROJECTID && process.env.USERNAME && process.env.PASSWORD) {
+  if (process.env.TOKEN) {
     console.log(`using .env supplied credentials:\n
-            project id: ${process.env.PROJECTID}
-            user: ${process.env.USERNAME}
+            project token: ${process.env.TOKEN}
         `);
-
-    credentials.project_id = process.env.PROJECTID
-    credentials.username = process.env.USERNAME
-    credentials.password = process.env.PASSWORD
     credentials.token = process.env.TOKEN
   } else {
     console.log(`using hardcoded credentials:\n
-        project id: ${credentials.project_id}
-        user: ${credentials.username}
+        project token: ${credentials.token}
         `)
   }
 
   //LOAD
-  let file = await readFilePromisified(dataFile).catch((e) => {
+  let file_contents = await readFilePromisified(dataFile).catch((e) => {
     console.error(`failed to load ${dataFile}... does it exist?\n`);
     console.log(`if you require some test data, try 'npm run generate' first...`);
     process.exit(1);
@@ -79,11 +66,11 @@ async function main(credentials = {}, dataFile) {
 
   //DECOMPRESS
   let decompressed;
-  if (isGzip(file)) {
+  if (isGzip(file_contents)) {
     console.log('unzipping file\n')
-    decompressed = await (await ungzip(file)).toString();
+    decompressed = await (await ungzip(file_contents)).toString();
   } else {
-    decompressed = file.toString();
+    decompressed = file_contents.toString();
   }
 
   //UNIFY
@@ -92,20 +79,74 @@ async function main(credentials = {}, dataFile) {
   try {
     allData = JSON.parse(decompressed)
   } catch (e) {
-    //it's probably NDJSON, so iterate over each line
-    try {
-      allData = decompressed.split('\n').map(line => JSON.parse(line));
-    } catch (e) {
-      //if we don't have JSON or NDJSON... fail...
-      console.log('failed to parse data... only valid JSON or NDJSON is supported by this script')
-      console.log(e)
+    //if we don't have JSON or NDJSON... fail...
+    console.log('failed to parse data... only valid JSON is supported by this script')
+    console.log(e)
+  }
+
+  const { profiles, events } = allData;
+  console.log(`parsed ${numberWithCommas(events.length)} events and ${numberWithCommas(Object.keys(profiles).length)} profiles from ${pathToDataFile}\n`);
+
+  await Promise.all([
+    send_events(events, credentials),
+    send_profile_updates(profiles, credentials),
+  ])
+
+  //FINISH
+  console.log(`\nsuccessfully imported`);
+  console.log('finshed.');
+  process.exit(0);
+}
+
+async function send_profile_updates(profiles, creds) {
+  let batch = [];
+  let pending_ops = [];
+  for (const [distinct_id, sorted_profiles] of Object.entries(profiles)) {
+    const sorted_updates = sorted_profiles.map(x => {
+      return {
+        "token": creds.token,
+        "$distinct_id": distinct_id,
+        "$set": {
+          ...x.profile,
+        },
+      };
+    });
+    if (batch.length + sorted_updates.length > PROFILE_UPDATES_PER_BATCH) {
+      pending_ops.push(flush_profile_update_batch(batch));
+      batch = sorted_updates;
+    } else {
+      batch = batch.concat(sorted_updates);
     }
   }
 
-  console.log(`parsed ${numberWithCommas(allData.length)} events from ${pathToDataFile}\n`);
+  if (batch.length > 0) {
+    pending_ops.push(flush_profile_update_batch(batch));
+  }
 
+  return await Promise.all(pending_ops);
+}
+
+async function flush_profile_update_batch(updates) {
+  let options = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  }
+
+  try {
+    let req = await fetch(ENGAGE_ENDPOINT_URL, options);
+    let res = await req.json();
+    console.log(`POST /engage w/ ${updates.length} updates: `, res)
+  } catch (e) {
+    console.log(`problem with request:\n${e}`)
+  }
+}
+
+async function send_events(events, credentials) {
   //TRANSFORM
-  for (singleEvent of allData) {
+  for (singleEvent of events) {
 
     //ensure each event has an $insert_id prop
     if (!singleEvent.properties.$insert_id) {
@@ -129,7 +170,7 @@ async function main(credentials = {}, dataFile) {
   //CHUNK
 
   //max 2000 events per batch
-  const batches = chunkForNumOfEvents(allData, EVENTS_PER_BATCH);
+  const batches = chunkForNumOfEvents(events, EVENTS_PER_BATCH);
 
   //max 2MB size per batch
   const batchesSized = chunkForSize(batches, BYTES_PER_BATCH);
@@ -140,18 +181,13 @@ async function main(credentials = {}, dataFile) {
 
 
   //FLUSH
-  console.log(`sending ${numberWithCommas(allData.length)} events in ${numberWithCommas(batches.length)} batches\n`);
+  console.log(`sending ${numberWithCommas(events.length)} events in ${numberWithCommas(batches.length)} batches\n`);
   let numRecordsImported = 0;
   for (eventBatch of compressed) {
     let result = await sendDataToMixpanel(credentials, eventBatch);
-    console.log(result);
     numRecordsImported += result.num_records_imported || 0;
   }
 
-  //FINISH
-  console.log(`\nsuccessfully imported ${numberWithCommas(numRecordsImported)} events`);
-  console.log('finshed.');
-  process.exit(0);
 }
 
 
@@ -199,18 +235,8 @@ async function compressChunks(arrayOfBatches) {
 }
 
 async function sendDataToMixpanel(auth, batch) {
-  return await sendEventDataToMixpanel(auth, batch);
-}
-
-async function sendEventDataToMixpanel(auth, batch) {
-  let userPass;
-  if (auth.token !== undefined && auth.token != '') {
-    userPass = auth.token + ':'
-  } else {
-    userPass = auth.username + ':' + auth.password
-  }
-  let authString = 'Basic ' + Buffer.from(userPass, 'binary').toString('base64');
-  let url = `${ENDPOINT_URL}?project_id=${auth.project_id}&strict=1`
+  let authString = 'Basic ' + Buffer.from(auth.token + ':', 'binary').toString('base64');
+  let url = `${IMPORT_ENDPOINT_URL}?strict=1`
   let options = {
     method: 'POST',
     headers: {
@@ -225,8 +251,8 @@ async function sendEventDataToMixpanel(auth, batch) {
   try {
     let req = await fetch(url, options);
     let res = await req.json();
+    console.log(`POST /import: `, res)
     return res;
-    //console.log(`${res}\n`)
   } catch (e) {
     console.log(`problem with request:\n${e}`)
   }
