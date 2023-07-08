@@ -4,6 +4,7 @@ const path = require('path')
 const Chance = require('chance'); //https://github.com/chancejs/chancejs
 const chance = new Chance();
 const readline = require('readline');
+const config = require('./config');
 
 //possible names of events for test data
 const eventNames = ['app open', 'log in', 'send message', 'receive message', 'roll dice', 'attack', 'defend', 'level up', 'start game']
@@ -29,7 +30,7 @@ function main() {
   chance.mixin({
     'event': function () {
       const did = chance.pickone(users)
-      const profile = addPrefix('$mp_profile:', chance.user_profile(did))
+      const profile = addPrefix(config.profile_prop_prefix, chance.user_profile(did))
 
       return {
         event: chance.pickone(eventNames),
